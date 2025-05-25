@@ -14,7 +14,7 @@ export ZSH="$HOME/.oh-my-zsh"
 
 ZSH_THEME="powerlevel10k/powerlevel10k"
 
-plugins=(git colorize colored-man-pages zsh-vi-mode zsh-syntax-highlighting zsh-autosuggestions fzf uv)
+plugins=(git colorize colored-man-pages zsh-vi-mode zsh-syntax-highlighting zsh-autosuggestions fzf uv gh)
 
 source $ZSH/oh-my-zsh.sh
 # HAS_WIDECHARS="false"
@@ -45,3 +45,10 @@ set -o vi
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+
+# bun completions
+[ -s "/home/danieli/.bun/_bun" ] && source "/home/danieli/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
