@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/zsh
 
 # The directory where your actual dotfiles are stored
 # Assuming new_dotfiles is directly in your home directory
@@ -38,7 +38,7 @@ if [ ! -d "$DOTFILES_DIR" ]; then
 fi
 
 # Loop through the map and create symlinks
-for df_in_repo in "${!DOTFILE_MAP[@]}"; do
+for df_in_repo in "${(k)DOTFILE_MAP[@]}"; do
     source_path="$DOTFILES_DIR/$df_in_repo"
     target_path="${DOTFILE_MAP[$df_in_repo]}"
     target_dir=$(dirname "$target_path")
@@ -108,3 +108,4 @@ echo "Dotfile symlinking process complete."
 echo "Updating font cache."
 fc-cache -fv
 echo "Font cache updated."
+
