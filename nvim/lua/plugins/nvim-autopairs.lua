@@ -31,8 +31,10 @@ return {
     -- (especially a snippet) is confirmed, nvim-autopairs handles any
     -- newly inserted pairs correctly.
     local cmp_autopairs = require("nvim-autopairs.completion.cmp")
-    local cmp = pcall(require, "cmp") -- Safely require cmp
-    if cmp then
+    -- Safely require cmp, capturing both the status (success/failure) and the module
+    local cmp_status, cmp = pcall(require, "cmp")
+    -- Check if requiring cmp was successful before trying to use it
+    if cmp_status then
       cmp.event:on(
         "confirm_done",
         cmp_autopairs.on_confirm_done()
@@ -40,3 +42,4 @@ return {
     end
   end,
 }
+
