@@ -1,0 +1,25 @@
+[credential "https://github.com"]
+	helper = 
+	helper = !/usr/bin/gh auth git-credential
+[credential "https://gist.github.com"]
+	helper = 
+	helper = !/usr/bin/gh auth git-credential
+[user]
+  email = iliesh.daniel@gmail.com
+  name = Daniel Ilies
+[pull]
+  rebase = false
+[merge]
+  tool = diffview
+[mergetool]
+  prompt = false
+  keepBackup = false
+[mergetool "diffview"]
+  cmd = nvim -n -c "DiffviewOpen" "$MERGE"
+[color]
+  ui = never
+[core]
+  pager = nvim -d
+
+[init]
+	defaultBranch = main

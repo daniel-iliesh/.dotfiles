@@ -1,0 +1,250 @@
+#!/bin/bash
+set -e
+
+# Directories
+ZSH_CUSTOM="${ZSH_CUSTOM: $HOME/.oh-my-zsh/custom}"
+CUSTOM_PLUGIN_DIR="$ZSH_CUSTOM/plugins"
+BUILTIN_PLUGIN_DIR="$HOME/.oh-my-zsh/plugins"
+ZSHRC="$HOME/.zshrc"
+
+# Function to show usage instructions
+usage() {
+    cat <<EOF
+Usage: $0 {list|install|remove|enable|disable} [arguments...]
+
+Commands:
+  list [--all|-a]
+      By default, lists:
+         - All custom plugins (regardless of enabled/disabled)
+         - Only enabled builtin plugins (from $BUILTIN_PLUGIN_DIR)
+      Use --all or -a to list all plugins (builtin and custom) with their status.
+
+  install <repo> [--no-enable]
+      Installs a custom plugin. <repo> can be:
+         - A full GitHub URL (with or without .git), e.g.,
+             https://github.com/zsh-users/zsh-syntax-highlighting.git
+         - A shorthand "username/repo", e.g.,
+             zsh-users/zsh-syntax-highlighting
+      By default, the plugin is added to your plugins list in $ZSHRC.
+      Use --no-enable to skip auto‑enabling.
+      Note: Built‑in plugins (in $BUILTIN_PLUGIN_DIR) cannot be installed.
+
+  remove <plugin-name>
+      Removes a custom plugin by deleting its folder from $CUSTOM_PLUGIN_DIR and
+      removing its name from the plugins list in $ZSHRC.
+      Note: Built‑in plugins in $BUILTIN_PLUGIN_DIR cannot be removed.
+
+  enable <plugin-name>
+      Adds the specified plugin to the plugins list in $ZSHRC (if available).
+
+  disable <plugin-name>
+      Removes the specified plugin from the plugins list in $ZSHRC.
+EOF
+    exit 1
+}
+
+# Function to extract the enabled plugins from .zshrc
+get_enabled_plugins() {
+    local enabled_line
+    enabled_line=$(grep '^plugins=' "$ZSHRC" | head -n 1)
+    echo "$enabled_line" | sed -E 's/^plugins=\((.*)\)/\1/'
+}
+
+# Function to print a plugin's info
+print_plugin() {
+    local plugin="$1"
+    local type="$2"    # builtin or custom
+    local status="$3"  # enabled or disabled
+    printf "%-30s %-10s %s\n" "$plugin" "($type)" "$status"
+}
+
+# Function to list plugins.
+# By default, it shows all custom plugins and only builtin plugins that are enabled.
+# Use --all or -a as a parameter to list all plugins.
+list_plugins() {
+    local show_all=false
+    if [ "$1" = "--all" ] || [ "$1" = "-a" ]; then
+        show_all=true
+    fi
+
+    # Get enabled plugins array from .zshrc
+    local enabled_plugins
+    enabled_plugins=$(get_enabled_plugins)
+    read -r -a enabled_array <<< "$enabled_plugins"
+
+    echo "Available Oh My Zsh plugins:"
+    echo "-----------------------------------------------"
+
+    # List builtin plugins
+    if [ -d "$BUILTIN_PLUGIN_DIR" ]; then
+        for plugin in $(ls -1 "$BUILTIN_PLUGIN_DIR"); do
+            local status="disabled"
+            for e in "${enabled_array[@]}"; do
+                if [ "$plugin" = "$e" ]; then
+                    status="enabled"
+                    break
+                fi
+            done
+            # By default, show only builtin plugins if enabled.
+            if $show_all || [ "$status" = "enabled" ]; then
+                print_plugin "$plugin" "builtin" "$status"
+            fi
+        done
+    fi
+
+    # List custom plugins (show all regardless of enabled status)
+    if [ -d "$CUSTOM_PLUGIN_DIR" ]; then
+        for plugin in $(ls -1 "$CUSTOM_PLUGIN_DIR"); do
+            local status="disabled"
+            for e in "${enabled_array[@]}"; do
+                if [ "$plugin" = "$e" ]; then
+                    status="enabled"
+                    break
+                fi
+            done
+            print_plugin "$plugin" "custom" "$status"
+        done
+    fi
+}
+
+# Function to add a plugin to the .zshrc plugins list
+enable_plugin_in_zshrc() {
+    local plugin="$1"
+    if ! grep -q "^plugins=" "$ZSHRC"; then
+        echo "plugins=($plugin)" >> "$ZSHRC"
+    elif ! grep -q "^plugins=.*\b${plugin}\b" "$ZSHRC"; then
+        sed -i.bak -E "s/^(plugins=\(.*)(\))$/\1 $plugin\2/" "$ZSHRC"
+    fi
+    echo "Plugin '$plugin' enabled in $ZSHRC."
+}
+
+# Function to remove a plugin from the .zshrc plugins list
+remove_plugin_from_zshrc() {
+    local plugin="$1"
+    sed -i.bak -E "s/(plugins=\(*)\b${plugin}\b(.*\))/\1\2/" "$ZSHRC"
+    sed -i.bak -E "s/\s+/ /g" "$ZSHRC"
+    echo "Plugin '$plugin' disabled in $ZSHRC."
+}
+
+# Function to install a plugin (only custom)
+install_plugin() {
+    local repo="$1"
+    shift
+    local enable_plugin=true
+
+    # Process optional arguments
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --no-enable)
+                enable_plugin=false
+                ;;
+            *)
+                echo "Unknown option: $1"
+                usage
+                ;;
+        esac
+        shift
+    done
+
+    # If repo doesn't start with http, assume shorthand format and build the URL
+    if [[ "$repo" != http* ]]; then
+        repo="https://github.com/$repo.git"
+    elif [[ "$repo" != *.git ]]; then
+        repo="${repo}.git"
+    fi
+
+    # Extract plugin name from repo URL (remove .git suffix)
+    local plugin_name
+    plugin_name=$(basename -s .git "$repo")
+
+    # Prevent installing if the plugin already exists as a builtin
+    if [ -d "$BUILTIN_PLUGIN_DIR/$plugin_name" ]; then
+        echo "Error: Plugin '$plugin_name' exists as a built‑in plugin. No need to install it."
+        exit 1
+    fi
+
+    mkdir -p "$CUSTOM_PLUGIN_DIR"
+
+    if [ -d "$CUSTOM_PLUGIN_DIR/$plugin_name" ]; then
+        echo "Plugin '$plugin_name' is already installed in custom plugins."
+    else
+        git clone "$repo" "$CUSTOM_PLUGIN_DIR/$plugin_name"
+        echo "Plugin '$plugin_name' installed successfully in custom plugins."
+    fi
+
+    if $enable_plugin; then
+        enable_plugin_in_zshrc "$plugin_name"
+    else
+        echo "Skipping enabling plugin in $ZSHRC as requested."
+    fi
+}
+
+# Function to remove a custom plugin
+remove_plugin() {
+    local plugin="$1"
+    if [ -z "$plugin" ]; then
+        echo "Please specify the plugin name to remove."
+        usage
+    fi
+
+    # Disallow removal if plugin exists as a builtin plugin
+    if [ -d "$BUILTIN_PLUGIN_DIR/$plugin" ]; then
+        echo "Error: '$plugin' is a built‑in plugin and cannot be removed."
+        exit 1
+    fi
+
+    local plugin_path="$CUSTOM_PLUGIN_DIR/$plugin"
+    if [ -d "$plugin_path" ]; then
+        rm -rf "$plugin_path"
+        echo "Plugin '$plugin' removed from custom plugins."
+        remove_plugin_from_zshrc "$plugin"
+    else
+        echo "Plugin '$plugin' not found in custom plugins."
+    fi
+}
+
+# Main script logic
+if [ "$#" -lt 1 ]; then
+    usage
+fi
+
+command="$1"
+shift
+
+case "$command" in
+    list)
+        if [ "$#" -ge 1 ]; then
+            list_plugins "$1"
+        else
+            list_plugins
+        fi
+        ;;
+    install)
+        if [ "$#" -lt 1 ]; then
+            usage
+        fi
+        install_plugin "$@"
+        ;;
+    remove)
+        if [ "$#" -lt 1 ]; then
+            usage
+        fi
+        remove_plugin "$1"
+        ;;
+    enable)
+        if [ "$#" -lt 1 ]; then
+            usage
+        fi
+        enable_plugin_in_zshrc "$1"
+        ;;
+    disable)
+        if [ "$#" -lt 1 ]; then
+            usage
+        fi
+        remove_plugin_from_zshrc "$1"
+        ;;
+    *)
+        usage
+        ;;
+esac
+
