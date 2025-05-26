@@ -1,10 +1,11 @@
-#!/bin/bash
+#!/bin/zsh
 set -e
 
 # Directories
-ZSH_CUSTOM="${ZSH_CUSTOM: $HOME/.oh-my-zsh/custom}"
+# Use :- for default value assignment in Zsh (handles empty ZSH_CUSTOM too)
+ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
 CUSTOM_PLUGIN_DIR="$ZSH_CUSTOM/plugins"
-BUILTIN_PLUGIN_DIR="$HOME/.oh-my-zsh/plugins"
+BUILTIN_PLUGIN_DIR="$HOME/.oh-my-zsh/plugins" # Assuming Oh My Zsh structure
 ZSHRC="$HOME/.zshrc"
 
 # Function to show usage instructions
@@ -44,9 +45,13 @@ EOF
 }
 
 # Function to extract the enabled plugins from .zshrc
-get_enabled_plugins() {
+get_enabled_plugins_string() {
     local enabled_line
-    enabled_line=$(grep '^plugins=' "$ZSHRC" | head -n 1)
+    # Ensure ZSHRC exists and plugins line is found
+    if [[ ! -f "$ZSHRC" ]] || ! enabled_line=$(grep '^plugins=' "$ZSHRC" | head -n 1); then
+        echo "" # Return empty string if not found
+        return
+    fi
     echo "$enabled_line" | sed -E 's/^plugins=\((.*)\)/\1/'
 }
 
@@ -59,45 +64,45 @@ print_plugin() {
 }
 
 # Function to list plugins.
-# By default, it shows all custom plugins and only builtin plugins that are enabled.
-# Use --all or -a as a parameter to list all plugins.
 list_plugins() {
     local show_all=false
-    if [ "$1" = "--all" ] || [ "$1" = "-a" ]; then
+    if [[ "$1" == "--all" || "$1" == "-a" ]]; then
         show_all=true
     fi
 
-    # Get enabled plugins array from .zshrc
-    local enabled_plugins
-    enabled_plugins=$(get_enabled_plugins)
-    read -r -a enabled_array <<< "$enabled_plugins"
+    local enabled_plugins_str
+    enabled_plugins_str=$(get_enabled_plugins_string)
+    # Zsh way to split string into array by spaces
+    local -a enabled_array=("${(@s: :)enabled_plugins_str}")
 
     echo "Available Oh My Zsh plugins:"
     echo "-----------------------------------------------"
 
     # List builtin plugins
-    if [ -d "$BUILTIN_PLUGIN_DIR" ]; then
-        for plugin in $(ls -1 "$BUILTIN_PLUGIN_DIR"); do
+    if [[ -d "$BUILTIN_PLUGIN_DIR" ]]; then
+        # Using Zsh globbing (N for nullglob, :t for tail/basename)
+        for plugin_path in $BUILTIN_PLUGIN_DIR/*(N); do
+            local plugin=${plugin_path:t} # Get basename
             local status="disabled"
             for e in "${enabled_array[@]}"; do
-                if [ "$plugin" = "$e" ]; then
+                if [[ "$plugin" == "$e" ]]; then
                     status="enabled"
                     break
                 fi
             done
-            # By default, show only builtin plugins if enabled.
-            if $show_all || [ "$status" = "enabled" ]; then
+            if $show_all || [[ "$status" == "enabled" ]]; then
                 print_plugin "$plugin" "builtin" "$status"
             fi
         done
     fi
 
-    # List custom plugins (show all regardless of enabled status)
-    if [ -d "$CUSTOM_PLUGIN_DIR" ]; then
-        for plugin in $(ls -1 "$CUSTOM_PLUGIN_DIR"); do
+    # List custom plugins
+    if [[ -d "$CUSTOM_PLUGIN_DIR" ]]; then
+        for plugin_path in $CUSTOM_PLUGIN_DIR/*(N); do
+            local plugin=${plugin_path:t}
             local status="disabled"
             for e in "${enabled_array[@]}"; do
-                if [ "$plugin" = "$e" ]; then
+                if [[ "$plugin" == "$e" ]]; then
                     status="enabled"
                     break
                 fi
@@ -110,141 +115,167 @@ list_plugins() {
 # Function to add a plugin to the .zshrc plugins list
 enable_plugin_in_zshrc() {
     local plugin="$1"
+    if [[ ! -f "$ZSHRC" ]]; then
+        echo "plugins=($plugin)" > "$ZSHRC" # Create if not exists
+        echo "Created $ZSHRC and added plugin '$plugin'."
+        return
+    fi
+
     if ! grep -q "^plugins=" "$ZSHRC"; then
+        echo "" >> "$ZSHRC" # Add a newline for separation if plugins= line is missing
         echo "plugins=($plugin)" >> "$ZSHRC"
-    elif ! grep -q "^plugins=.*\b${plugin}\b" "$ZSHRC"; then
+    elif ! grep -qE "^plugins=\(.*\<${plugin}\>.*\)" "$ZSHRC"; then # Use word boundaries \< \>
+        # Using .bak extension for sed -i is standard for BSD sed (macOS)
         sed -i.bak -E "s/^(plugins=\(.*)(\))$/\1 $plugin\2/" "$ZSHRC"
+        rm -f "${ZSHRC}.bak" # Optionally remove backup if successful
+    else
+        echo "Plugin '$plugin' is already enabled in $ZSHRC."
+        return
     fi
     echo "Plugin '$plugin' enabled in $ZSHRC."
 }
 
 # Function to remove a plugin from the .zshrc plugins list
-remove_plugin_from_zshrc() {
+# Renamed to disable_plugin_in_zshrc for clarity, as it only modifies .zshrc
+disable_plugin_in_zshrc() {
     local plugin="$1"
-    sed -i.bak -E "s/(plugins=\(*)\b${plugin}\b(.*\))/\1\2/" "$ZSHRC"
-    sed -i.bak -E "s/\s+/ /g" "$ZSHRC"
-    echo "Plugin '$plugin' disabled in $ZSHRC."
+    if [[ ! -f "$ZSHRC" ]]; then
+        echo "Warning: $ZSHRC not found. Cannot disable plugin '$plugin'."
+        return
+    fi
+
+    if grep -qE "^plugins=\(.*\<${plugin}\>.*\)" "$ZSHRC"; then
+        # Remove the plugin, then clean up potential double spaces or leading/trailing spaces in parens
+        sed -i.bak -E "s/\b${plugin}\b//g" "$ZSHRC" # Remove the plugin word
+        sed -i.bak -E 's/plugins=\(\s+/plugins=(/' "$ZSHRC" # Remove leading space after (
+        sed -i.bak -E 's/\s+\)/)/' "$ZSHRC" # Remove trailing space before )
+        sed -i.bak -E 's/\s\s+/ /g' "$ZSHRC" # Compact multiple spaces
+        rm -f "${ZSHRC}.bak" # Optionally remove backup
+        echo "Plugin '$plugin' disabled in $ZSHRC."
+    else
+        echo "Plugin '$plugin' not found in $ZSHRC plugins list."
+    fi
 }
 
 # Function to install a plugin (only custom)
 install_plugin() {
     local repo="$1"
-    shift
-    local enable_plugin=true
+    shift # Consume the repo argument
+    local enable_plugin_flag=true # Renamed to avoid conflict with function name
 
     # Process optional arguments
-    while [ "$#" -gt 0 ]; do
+    while [[ "$#" -gt 0 ]]; do
         case "$1" in
             --no-enable)
-                enable_plugin=false
+                enable_plugin_flag=false
                 ;;
             *)
-                echo "Unknown option: $1"
+                echo "Unknown option for install: $1"
                 usage
                 ;;
         esac
         shift
     done
 
-    # If repo doesn't start with http, assume shorthand format and build the URL
-    if [[ "$repo" != http* ]]; then
+    if [[ "$repo" != http* && "$repo" == */* ]]; then # Basic check for shorthand
         repo="https://github.com/$repo.git"
-    elif [[ "$repo" != *.git ]]; then
+    elif [[ "$repo" == http* && "$repo" != *.git ]]; then
         repo="${repo}.git"
+    elif [[ "$repo" != http* ]]; then
+        echo "Error: Invalid repository format. Use 'username/repo' or full URL."
+        exit 1
     fi
 
-    # Extract plugin name from repo URL (remove .git suffix)
     local plugin_name
-    plugin_name=$(basename -s .git "$repo")
+    plugin_name=$(basename "$repo" .git) # Simpler basename usage
 
-    # Prevent installing if the plugin already exists as a builtin
-    if [ -d "$BUILTIN_PLUGIN_DIR/$plugin_name" ]; then
+    if [[ -d "$BUILTIN_PLUGIN_DIR/$plugin_name" ]]; then
         echo "Error: Plugin '$plugin_name' exists as a built‑in plugin. No need to install it."
         exit 1
     fi
 
     mkdir -p "$CUSTOM_PLUGIN_DIR"
 
-    if [ -d "$CUSTOM_PLUGIN_DIR/$plugin_name" ]; then
-        echo "Plugin '$plugin_name' is already installed in custom plugins."
+    if [[ -d "$CUSTOM_PLUGIN_DIR/$plugin_name" ]]; then
+        echo "Plugin '$plugin_name' is already installed in $CUSTOM_PLUGIN_DIR."
     else
-        git clone "$repo" "$CUSTOM_PLUGIN_DIR/$plugin_name"
-        echo "Plugin '$plugin_name' installed successfully in custom plugins."
+        echo "Cloning $repo into $CUSTOM_PLUGIN_DIR/$plugin_name..."
+        if git clone --depth 1 "$repo" "$CUSTOM_PLUGIN_DIR/$plugin_name"; then
+            echo "Plugin '$plugin_name' installed successfully."
+        else
+            echo "Error: Failed to clone plugin '$plugin_name'."
+            exit 1
+        fi
     fi
 
-    if $enable_plugin; then
+    if $enable_plugin_flag; then
         enable_plugin_in_zshrc "$plugin_name"
     else
-        echo "Skipping enabling plugin in $ZSHRC as requested."
+        echo "Skipping enabling plugin '$plugin_name' in $ZSHRC as requested."
     fi
 }
 
 # Function to remove a custom plugin
 remove_plugin() {
     local plugin="$1"
-    if [ -z "$plugin" ]; then
+    if [[ -z "$plugin" ]]; then
         echo "Please specify the plugin name to remove."
         usage
     fi
 
-    # Disallow removal if plugin exists as a builtin plugin
-    if [ -d "$BUILTIN_PLUGIN_DIR/$plugin" ]; then
-        echo "Error: '$plugin' is a built‑in plugin and cannot be removed."
+    if [[ -d "$BUILTIN_PLUGIN_DIR/$plugin" ]]; then
+        echo "Error: '$plugin' is a built‑in plugin and cannot be removed using this script."
         exit 1
     fi
 
     local plugin_path="$CUSTOM_PLUGIN_DIR/$plugin"
-    if [ -d "$plugin_path" ]; then
-        rm -rf "$plugin_path"
-        echo "Plugin '$plugin' removed from custom plugins."
-        remove_plugin_from_zshrc "$plugin"
+    if [[ -d "$plugin_path" ]]; then
+        read -q "choice?Are you sure you want to remove the plugin '$plugin' from $plugin_path? (y/N): "
+        echo # Newline after read -q
+        if [[ "$choice" =~ ^[Yy]$ ]]; then
+            if rm -rf "$plugin_path"; then
+                echo "Plugin '$plugin' removed from $CUSTOM_PLUGIN_DIR."
+                disable_plugin_in_zshrc "$plugin" # Call the renamed function
+            else
+                echo "Error: Failed to remove plugin directory $plugin_path."
+            fi
+        else
+            echo "Removal of plugin '$plugin' cancelled."
+        fi
     else
-        echo "Plugin '$plugin' not found in custom plugins."
+        echo "Plugin '$plugin' not found in $CUSTOM_PLUGIN_DIR."
     fi
 }
 
 # Main script logic
-if [ "$#" -lt 1 ]; then
+if [[ "$#" -lt 1 ]]; then
     usage
 fi
 
 command="$1"
-shift
+shift # Consume the command
 
 case "$command" in
     list)
-        if [ "$#" -ge 1 ]; then
-            list_plugins "$1"
-        else
-            list_plugins
-        fi
+        list_plugins "$@" # Pass remaining args (e.g., --all)
         ;;
     install)
-        if [ "$#" -lt 1 ]; then
-            usage
-        fi
+        if [[ "$#" -lt 1 ]]; then usage; fi
         install_plugin "$@"
         ;;
     remove)
-        if [ "$#" -lt 1 ]; then
-            usage
-        fi
+        if [[ "$#" -lt 1 ]]; then usage; fi
         remove_plugin "$1"
         ;;
     enable)
-        if [ "$#" -lt 1 ]; then
-            usage
-        fi
+        if [[ "$#" -lt 1 ]]; then usage; fi
         enable_plugin_in_zshrc "$1"
         ;;
     disable)
-        if [ "$#" -lt 1 ]; then
-            usage
-        fi
-        remove_plugin_from_zshrc "$1"
+        if [[ "$#" -lt 1 ]]; then usage; fi
+        disable_plugin_in_zshrc "$1" # Call the renamed function
         ;;
     *)
         usage
         ;;
 esac
-
