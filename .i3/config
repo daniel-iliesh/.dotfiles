@@ -40,6 +40,7 @@ bindsym $mod+z exec --no-startup-id morc_menu
 
 # Screenshot: Capture selected region with Flameshot GUI
 bindsym Ctrl+Shift+Alt+s exec --no-startup-id flameshot gui --clipboard --pin --path ~/Pictures
+exec --no-startup-id "setxkbmap -layout us,ru -option 'grp:alt_space_toggle'"
 ################################################################################################
 ## sound-section - DO NOT EDIT if you wish to automatically upgrade Alsa -> Pulseaudio later! ##
 ################################################################################################
@@ -72,7 +73,7 @@ bindsym $mod+Shift+Print --release exec --no-startup-id i3-scrot -s
 bindsym $mod+Shift+h exec xdg-open /usr/share/doc/manjaro/i3_help.pdf
 bindsym $mod+Ctrl+x --release exec --no-startup-id xkill
 
-# focus_follows_mouse no
+focus_follows_mouse no
 
 # change focus
 bindsym $mod+h focus left

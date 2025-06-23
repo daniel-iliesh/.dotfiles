@@ -55,6 +55,7 @@ vim.o.undodir = os.getenv("HOME") .. "/.vim/undodir"
 vim.o.undofile = true
 vim.o.termguicolors = true
 vim.cmd('filetype plugin indent on')
+vim.cmd('colorscheme retrobox')
 
 -- My shit
 vim.opt.showcmd = true
@@ -67,3 +68,4 @@ vim.opt.listchars = {
     extends = "›",   -- Show when text extends beyond the screen
     precedes = "‹",  -- Show when there's text before the screen
 }
+vim.g.netrw_keepdir = 0
