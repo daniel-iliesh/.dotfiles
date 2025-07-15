@@ -12,12 +12,15 @@ DOTFILES_DIR="$HOME/.dotfiles"
 declare -A DOTFILE_MAP
 DOTFILE_MAP=(
     ["nvim"]="$HOME/.config/nvim"  # nvim config directory
+    [".emacs.d"]="$HOME/.emacs.d"
+    ["doom"]="$HOME/.config/doom"
     [".tmux.conf"]="$HOME/.tmux.conf"
     [".zshrc"]="$HOME/.zshrc"
+    [".vimrc"]="$HOME/.vimrc"
     [".i3"]="$HOME/.i3"
     ["scripts/zpm"]="$HOME/.local/bin/zpm"
     ["scripts/tmux-sessionizer"]="$HOME/.local/bin/tmux-sessionizer"
-    ["fonts/FiraCodeNerdFont"]="$HOME/.fonts/FiraCodeNerdFont"
+    ["fonts/FiraCodeNerdFont"]="$HOME/.local/share/fonts/FiraCodeNerdFont"
     [".gitconfig"]="$HOME/.gitconfig"
     [".oh-my-zsh"]="$HOME/.oh-my-zsh"
     [".p10k.zsh"]="$HOME/.p10k.zsh"
