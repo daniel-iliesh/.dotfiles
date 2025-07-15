@@ -12,7 +12,6 @@ DOTFILES_DIR="$HOME/.dotfiles"
 declare -A DOTFILE_MAP
 DOTFILE_MAP=(
     ["nvim"]="$HOME/.config/nvim"  # nvim config directory
-    [".emacs.d"]="$HOME/.emacs.d"
     ["doom"]="$HOME/.config/doom"
     [".tmux.conf"]="$HOME/.tmux.conf"
     [".zshrc"]="$HOME/.zshrc"
