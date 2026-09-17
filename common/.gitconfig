@@ -23,3 +23,7 @@
 
 [init]
 	defaultBranch = main
+
+# Machine-specific overrides (untracked). Missing file is silently ignored.
+[include]
+	path = ~/.gitconfig.local
