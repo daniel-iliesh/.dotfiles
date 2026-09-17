@@ -1,113 +1,103 @@
 #!/bin/zsh
+# Cross-platform dotfile symlinker.
+# Layout:
+#   common/  -> linked on every machine
+#   linux/   -> linked only on Linux
+#   macos/   -> linked only on macOS
+# The .oh-my-zsh submodule lives at the repo root (vendored dependency).
 
-# The directory where your actual dotfiles are stored
-# Assuming new_dotfiles is directly in your home directory
-DOTFILES_DIR="$HOME/.dotfiles"
+DOTFILES_DIR="${0:A:h}"   # directory this script lives in
 
-# --- Configuration: Maps dotfile names in your repo to their target locations ---
-# Format: "dotfile_in_repo:target_path_from_home"
-# For nvim, the target is ~/.config/nvim, so we handle it slightly differently
-# by specifying the full target path.
+# --- Detect OS ---
+case "$(uname -s)" in
+    Darwin) OS="macos" ;;
+    Linux)  OS="linux" ;;
+    *)      echo "Unsupported OS: $(uname -s)"; exit 1 ;;
+esac
+echo "Detected OS: $OS"
 
-declare -A DOTFILE_MAP
-DOTFILE_MAP=(
-    ["nvim"]="$HOME/.config/nvim"  # nvim config directory
-    ["doom"]="$HOME/.config/doom"
-    [".tmux.conf"]="$HOME/.tmux.conf"
-    [".zshrc"]="$HOME/.zshrc"
-    [".vimrc"]="$HOME/.vimrc"
-    [".i3"]="$HOME/.i3"
-    ["scripts/zpm"]="$HOME/.local/bin/zpm"
-    ["scripts/tmux-sessionizer"]="$HOME/.local/bin/tmux-sessionizer"
-    ["fonts/FiraCodeNerdFont"]="$HOME/.local/share/fonts/FiraCodeNerdFont"
-    [".gitconfig"]="$HOME/.gitconfig"
-    [".oh-my-zsh"]="$HOME/.oh-my-zsh"
-    [".p10k.zsh"]="$HOME/.p10k.zsh"
-    # Add more files here as needed, e.g.:
-    # ["my_scripts/cool_script.sh"]="$HOME/.local/bin/cool_script.sh" # Example for a script
+# --- Symlink maps: "source_relative_to_repo:target_absolute_path" ---
+# Common (all machines)
+COMMON_MAP=(
+    "common/.zshrc:$HOME/.zshrc"
+    "common/.vimrc:$HOME/.vimrc"
+    "common/.tmux.conf:$HOME/.tmux.conf"
+    "common/.gitconfig:$HOME/.gitconfig"
+    "common/.p10k.zsh:$HOME/.p10k.zsh"
+    "common/nvim:$HOME/.config/nvim"
+    "common/doom:$HOME/.config/doom"
+    "common/scripts/zpm:$HOME/.local/bin/zpm"
+    "common/scripts/tmux-sessionizer:$HOME/.local/bin/tmux-sessionizer"
+    ".oh-my-zsh:$HOME/.oh-my-zsh"
 )
 
-# --- End Configuration ---
+# macOS-only
+MACOS_MAP=(
+    "macos/aerospace:$HOME/.config/aerospace"
+    # Fonts on macOS are installed via Homebrew (see Brewfile), not symlinked.
+)
 
-echo "Starting dotfile symlinking process..."
+# Linux-only
+LINUX_MAP=(
+    "linux/.i3:$HOME/.i3"
+    "common/fonts/FiraCodeNerdFont:$HOME/.local/share/fonts/FiraCodeNerdFont"
+)
+
+# Build the active map = common + OS-specific
+MAP=("${COMMON_MAP[@]}")
+if [ "$OS" = "macos" ]; then
+    MAP+=("${MACOS_MAP[@]}")
+else
+    MAP+=("${LINUX_MAP[@]}")
+fi
+
 echo "Dotfiles source directory: $DOTFILES_DIR"
 echo "----------------------------------------"
 
-# Ensure the main dotfiles directory exists
 if [ ! -d "$DOTFILES_DIR" ]; then
     echo "ERROR: Dotfiles source directory not found: $DOTFILES_DIR"
     exit 1
 fi
 
-# Loop through the map and create symlinks
-for df_in_repo in "${(k)DOTFILE_MAP[@]}"; do
+for entry in "${MAP[@]}"; do
+    df_in_repo="${entry%%:*}"
+    target_path="${entry#*:}"
     source_path="$DOTFILES_DIR/$df_in_repo"
-    target_path="${DOTFILE_MAP[$df_in_repo]}"
     target_dir=$(dirname "$target_path")
 
-    echo "Processing: $df_in_repo"
-    echo "  Source: $source_path"
-    echo "  Target: $target_path"
+    echo "Processing: $df_in_repo -> $target_path"
 
-    # Check if the source file/directory actually exists in your dotfiles repo
     if [ ! -e "$source_path" ]; then
-        echo "  WARNING: Source file/directory not found: $source_path. Skipping."
+        echo "  WARNING: Source not found: $source_path. Skipping."
         echo "----------------------------------------"
         continue
     fi
 
-    # Create target directory if it doesn't exist (e.g., ~/.config)
     if [ ! -d "$target_dir" ]; then
         echo "  Creating parent directory: $target_dir"
-        mkdir -p "$target_dir"
-        if [ $? -ne 0 ]; then
-            echo "  ERROR: Failed to create parent directory $target_dir. Skipping."
-            echo "----------------------------------------"
-            continue
-        fi
+        mkdir -p "$target_dir" || { echo "  ERROR: mkdir failed. Skipping."; continue; }
     fi
 
-    # If the target already exists, back it up
-    if [ -L "$target_path" ]; then # If it's already a symlink
-        echo "  Symlink already exists at $target_path."
-        # Optional: remove and relink if you want to ensure it points to the correct source
-        # current_link_target=$(readlink "$target_path")
-        # if [ "$current_link_target" == "$source_path" ]; then
-        #     echo "  It already points to the correct source. Skipping relink."
-        # else
-        #     echo "  It points to a different source ($current_link_target). Removing and relinking."
-        #     rm "$target_path"
-        # fi
-        # For simplicity, we'll just assume if it's a link, it might be an old one we want to replace or it's correct.
-        # If you want to be more robust, uncomment and adapt the check above.
-        # For now, if it's a symlink, we'll remove it to create a fresh one.
-        echo "  Removing existing symlink at $target_path."
+    if [ -L "$target_path" ]; then
+        echo "  Removing existing symlink."
         rm "$target_path"
-
-    elif [ -e "$target_path" ]; then # If it's a regular file or directory
+    elif [ -e "$target_path" ]; then
         backup_path="$target_path.bak.$(date +%Y%m%d%H%M%S)"
-        echo "  Backing up existing $target_path to $backup_path"
-        mv "$target_path" "$backup_path"
-        if [ $? -ne 0 ]; then
-            echo "  ERROR: Failed to back up $target_path. Skipping."
-            echo "----------------------------------------"
-            continue
-        fi
+        echo "  Backing up existing $target_path -> $backup_path"
+        mv "$target_path" "$backup_path" || { echo "  ERROR: backup failed. Skipping."; continue; }
     fi
 
-    # Create the symlink
-    echo "  Creating symlink: $target_path -> $source_path"
-    ln -sfn "$source_path" "$target_path"
-    if [ $? -eq 0 ]; then
-        echo "  Successfully created symlink."
-    else
-        echo "  ERROR: Failed to create symlink for $target_path."
-    fi
+    ln -sfn "$source_path" "$target_path" \
+        && echo "  Linked." \
+        || echo "  ERROR: failed to link $target_path"
     echo "----------------------------------------"
 done
 
-echo "Dotfile symlinking process complete."
-echo "Updating font cache."
-fc-cache -fv
-echo "Font cache updated."
+# --- Refresh font cache (Linux only; macOS registers fonts automatically) ---
+if [ "$OS" = "linux" ] && command -v fc-cache >/dev/null 2>&1; then
+    echo "Updating font cache..."
+    fc-cache -fv
+    echo "Font cache updated."
+fi
 
+echo "Dotfile symlinking process complete."
