@@ -52,6 +52,13 @@ reserved by macOS). Note: Terminal.app exposes each tab as a separate window, so
 opening a tab splits the tiling layout — this is a known Terminal.app limitation
 and is intentionally left unaddressed.
 
+## Git machine-specific settings
+
+`common/.gitconfig` ends with `[include] path = ~/.gitconfig.local`. Put
+per-machine or per-host git settings (corporate CA, host-specific http config,
+credentials) in that untracked file, never in the tracked config. A missing
+file is silently ignored by git.
+
 ## Commits
 
 End commit messages with:
